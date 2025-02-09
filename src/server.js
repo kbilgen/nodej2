@@ -78,7 +78,7 @@ class BackupServer {
                 // Dosya adını oluştur
                 const fileName = req.get('X-File-Name') || file.originalname;
                 const timestamp = Date.now();
-                const ext = path.extname(fileName) || '.jpg';
+                const ext = path.extname(fileName) || (file.mimetype.startsWith('image/') ? '.jpg' : '.mp4');
                 const newFileName = `${timestamp}-${path.basename(fileName, ext)}${ext}`;
                 console.log('📄 File name:', newFileName);
                 cb(null, newFileName);
@@ -88,12 +88,12 @@ class BackupServer {
         this.upload = multer({
             storage: storage,
             limits: {
-                fileSize: 50 * 1024 * 1024 // 50MB limit
+                fileSize: 500 * 1024 * 1024 // 500MB limit (videolar için artırıldı)
             },
             fileFilter: (req, file, cb) => {
-                // Sadece resim dosyalarını kabul et
-                if (!file.mimetype.startsWith('image/')) {
-                    return cb(new Error('Only image files are allowed'));
+                // Resim ve video dosyalarını kabul et
+                if (!file.mimetype.startsWith('image/') && !file.mimetype.startsWith('video/')) {
+                    return cb(new Error('Only image and video files are allowed'));
                 }
                 cb(null, true);
             }
@@ -132,7 +132,7 @@ class BackupServer {
             console.log('📥 Upload request received');
             console.log('Headers:', req.headers);
             
-            this.upload.single('photo')(req, res, (err) => {
+            this.upload.single('media')(req, res, (err) => {
                 if (err) {
                     console.error('❌ Upload error:', err);
                     return res.status(400).json({
@@ -148,16 +148,30 @@ class BackupServer {
                     });
                 }
 
+                // Dosya tipini kontrol et
+                const mimeType = req.file.mimetype;
+                const isImage = mimeType.startsWith('image/');
+                const isVideo = mimeType.startsWith('video/');
+
+                if (!isImage && !isVideo) {
+                    return res.status(400).json({
+                        error: 'Invalid file type',
+                        details: 'Only images and videos are allowed'
+                    });
+                }
+
                 console.log('✅ File saved:', {
                     path: req.file.path,
                     size: req.file.size,
-                    mimetype: req.file.mimetype
+                    mimetype: req.file.mimetype,
+                    type: isImage ? 'image' : 'video'
                 });
 
                 res.status(200).json({
                     success: true,
                     file: req.file.filename,
-                    path: path.relative(os.homedir(), req.file.path)
+                    path: path.relative(os.homedir(), req.file.path),
+                    type: isImage ? 'image' : 'video'
                 });
             });
         });
